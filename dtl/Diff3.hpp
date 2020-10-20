@@ -61,13 +61,15 @@ namespace dtl {
         elem                               confMarkB;
         elem                               confMarkC;
     public :
-        Diff3 () : confMarkA(), confMarkB(), confMarkC() {}
+        Diff3 () : markConflicts(false), conflict(false),
+                   confMarkA(), confMarkB(), confMarkC() {}
+        
         Diff3 (const sequence& a, 
                const sequence& b, 
                const sequence& c) : A(a), B(b), C(c), 
                                     diff_ba(b, a), diff_bc(b, c), 
-                                    confMarkA(), confMarkB(), confMarkC(),
-                                    markConflicts(false), conflict(false) {}
+                                    markConflicts(false), conflict(false),
+                                    confMarkA(), confMarkB(), confMarkC() {}
         
         ~Diff3 () {}
         
