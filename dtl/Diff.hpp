@@ -179,7 +179,7 @@ namespace dtl {
         /**
          * patching with Unified Format Hunks
          */
-        sequence uniPatch (const sequence& seq) {
+        sequence uniPatch (const sequence& seq, bool strict = false) {
             elemList        seqLst(seq.begin(), seq.end());
             sesElemVec      shunk;
             sesElemVec_iter vsesIt;
@@ -208,6 +208,10 @@ namespace dtl {
                         }
                         break;
                     case SES_COMMON :
+                        // Check if common elements are really equal (in strict mode)
+                        if (strict && *lstIt != vsesIt->first) {
+                            return seq;
+                        }
                         if (lstIt != seqLst.end()) {
                             ++lstIt;
                         }
@@ -538,6 +542,12 @@ namespace dtl {
                 }
             }
             return ret;
+        }
+
+        template <typename stream>
+        void composeUnifiedHunksFromStream (stream& st) {
+            ses = composeSesFromStream(st);
+            composeUnifiedHunks();
         }
         
     private :

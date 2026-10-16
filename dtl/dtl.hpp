@@ -42,6 +42,7 @@
 #include "Lcs.hpp"
 #include "Ses.hpp"
 #include "Diff.hpp"
+#include "Conflict.hpp"
 #include "Diff3.hpp"
 
 #endif // DTL_H

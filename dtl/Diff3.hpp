@@ -56,16 +56,19 @@ namespace dtl {
         Diff< elem, sequence, comparator > diff_ba;
         Diff< elem, sequence, comparator > diff_bc;
         bool                               conflict;
-        elem                               csepabegin;
-        elem                               csepa;
-        elem                               csepaend;
+        bool                               markConflicts;
+        elem                               confMarkA;
+        elem                               confMarkB;
+        elem                               confMarkC;
     public :
-        Diff3 () {}
+        Diff3 () : markConflicts(false), conflict(false),
+                   confMarkA(), confMarkB(), confMarkC() {}
         Diff3 (const sequence& a, 
                const sequence& b, 
                const sequence& c) : A(a), B(b), C(c), 
                                     diff_ba(b, a), diff_bc(b, c), 
-                                    conflict(false) {} 
+                                    markConflicts(false), conflict(false),
+                                    confMarkA(), confMarkB(), confMarkC() {}
         
         ~Diff3 () {}
         
@@ -75,6 +78,19 @@ namespace dtl {
         
         sequence getMergedSequence () const {
             return S;
+        }
+        
+        /**
+         * Enables conflict markers in returned sequence. The merge_ method will thus not return on first conflict.
+         * AMarker will be used to mark the start of a conflict block.
+         * BMarker will be used to mark the middle of a conflict block.
+         * CMarker will be used to mark the end of a conflict block.
+         */
+        void enableConflictMarkers(elem AMarker, elem BMarker, elem CMarker) {
+            markConflicts = true;
+            confMarkA = AMarker;
+            confMarkB = BMarker;
+            confMarkC = CMarker;
         }
         
         /**
@@ -124,6 +140,7 @@ namespace dtl {
             sesElemVec_iter bc_it    = ses_bc_v.begin();
             sesElemVec_iter ba_end   = ses_ba_v.end();
             sesElemVec_iter bc_end   = ses_bc_v.end();
+            Conflict<elem, sequence> conf(seq, confMarkA, confMarkB, confMarkC);
             
             while (!isEnd(ba_end, ba_it) || !isEnd(bc_end, bc_it)) {
                 while (true) {
@@ -136,6 +153,7 @@ namespace dtl {
                     } else {
                         break;
                     }
+                    if (markConflicts) conf.handleElem(&ba_it, &bc_it, false);
                     if      (!isEnd(ba_end, ba_it)) seq.push_back(ba_it->first);
                     else if (!isEnd(bc_end, bc_it)) seq.push_back(bc_it->first);
                     forwardUntilEnd(ba_end, ba_it);
@@ -144,54 +162,77 @@ namespace dtl {
                 if (isEnd(ba_end, ba_it) || isEnd(bc_end, bc_it)) break;
                 if (   ba_it->second.type == SES_COMMON 
                        && bc_it->second.type == SES_DELETE) {
+                    if (markConflicts) conf.handleElem(&ba_it, &bc_it, false);
                     forwardUntilEnd(ba_end, ba_it);
                     forwardUntilEnd(bc_end, bc_it);
                 } else if (ba_it->second.type == SES_COMMON && 
                            bc_it->second.type == SES_ADD) {
+                    if (markConflicts) conf.handleElem(&ba_it, &bc_it, false);
                     seq.push_back(bc_it->first);
                     forwardUntilEnd(bc_end, bc_it);
                 } else if (ba_it->second.type == SES_DELETE && 
                            bc_it->second.type == SES_COMMON) {
+                    if (markConflicts) conf.handleElem(&ba_it, &bc_it, false);
                     forwardUntilEnd(ba_end, ba_it);
                     forwardUntilEnd(bc_end, bc_it);
                 } else if (ba_it->second.type == SES_DELETE && 
                            bc_it->second.type == SES_DELETE) {
                     if (ba_it->first == bc_it->first) {
+                        if (markConflicts) conf.handleElem(&ba_it, &bc_it, false);
                         forwardUntilEnd(ba_end, ba_it);
                         forwardUntilEnd(bc_end, bc_it);
                     } else {
                         // conflict
                         conflict = true;
-                        return B;
+                        if (!markConflicts) return B;
+                        conf.handleElem(nullptr, nullptr, true);
+                        forwardUntilEnd(ba_end, ba_it);
+                        forwardUntilEnd(bc_end, bc_it);
                     }
                 } else if (ba_it->second.type == SES_DELETE && 
                            bc_it->second.type == SES_ADD) {
                     // conflict
                     conflict = true;
-                    return B;
+                    if (!markConflicts) return B;
+                    conf.handleElem(nullptr, &bc_it, true);
+                    forwardUntilEnd(ba_end, ba_it);
+                    forwardUntilEnd(bc_end, bc_it);
                 } else if (ba_it->second.type == SES_ADD && 
                            bc_it->second.type == SES_COMMON) {
+                    if (markConflicts) conf.handleElem(&ba_it, &bc_it, false);
                     seq.push_back(ba_it->first);
                     forwardUntilEnd(ba_end, ba_it);
                 } else if (ba_it->second.type == SES_ADD && 
                            bc_it->second.type == SES_DELETE) {
                     // conflict
                     conflict = true;
-                    return B;
+                    if (!markConflicts) return B;
+                    conf.handleElem(&ba_it, nullptr, true);
+                    forwardUntilEnd(ba_end, ba_it);
+                    forwardUntilEnd(bc_end, bc_it);
                 } else if (ba_it->second.type == SES_ADD && 
                            bc_it->second.type == SES_ADD) {
                     if (ba_it->first == bc_it->first) {
+                        if (markConflicts) conf.handleElem(&ba_it, &bc_it, false);
                         seq.push_back(ba_it->first);
                         forwardUntilEnd(ba_end, ba_it);
                         forwardUntilEnd(bc_end, bc_it);
                     } else {
                         // conflict
                         conflict = true;
-                        return B;
+                        if (!markConflicts) return B;
+                        conf.handleElem(&ba_it, &bc_it, true);
+                        forwardUntilEnd(ba_end, ba_it);
+                        forwardUntilEnd(bc_end, bc_it);
                     }
                 }
             }
             
+            // Flush a trailing conflict block: handleElem only emits
+            // markers when a non-conflict element follows, so a conflict
+            // running to the end of both streams would otherwise be lost.
+            if (markConflicts) conf.handleElem(nullptr, nullptr, false);
+
             if (isEnd(ba_end, ba_it)) {
                 addDecentSequence(bc_end, bc_it, seq);
             } else if (isEnd(bc_end, bc_it)) {
